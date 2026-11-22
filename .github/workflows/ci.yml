@@ -24,5 +24,34 @@ jobs:
         run: go vet ./...
       - name: Test (race detector)
         run: go test -race -count=1 ./...
+      - name: Fuzz (short)
+        run: make fuzz FUZZTIME=15s
       - name: Build
         run: make build
+
+  proto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # needed to compare against main
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: Lint schema
+        run: buf lint
+      - name: Check formatting
+        run: buf format --diff --exit-code
+      - name: No breaking wire changes vs main
+        if: github.event_name == 'pull_request'
+        run: |
+          if git ls-tree -r origin/main --name-only | grep -q '\.proto$'; then
+            buf breaking --against '.git#branch=origin/main'
+          else
+            echo "main has no .proto files yet; skipping"
+          fi
+      - name: Generated code is up to date
+        run: buf generate && git diff --exit-code
