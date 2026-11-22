@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errorlint   # correct error wrapping / errors.Is
+    - gosec       # security issues (we parse input from strangers)
+    - misspell
+    - revive
+    - unconvert
+  settings:
+    errcheck:
+      # Failed writes to stdout/stderr are not actionable in a CLI.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

@@ -1,0 +1,36 @@
+# Build output
+bin/
+dist/
+
+# Node data dirs (keys, SQLite) — never commit private keys
+data/
+*.db
+*.db-wal
+*.db-shm
+*.key
+
+# Env files (commit .env.example only)
+.env
+.env.*
+!.env.example
+
+# Simulator raw output (plots in docs/ are committed)
+runs/
+
+# Go / tooling
+coverage.out
+*.test
+testdata/fuzz/**/corpus-tmp/
+
+# Web UI (milestone 5)
+web/node_modules/
+web/dist/
+
+# Python analysis
+analysis/.venv/
+__pycache__/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
