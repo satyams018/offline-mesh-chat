@@ -61,9 +61,11 @@ The core never touches sockets, clocks or goroutines:
 func (n *Node) Handle(now time.Time, ev Event) []Action
 // Events:  PeerUp, PeerDown, FrameReceived, Tick, AppSend
 // Actions: SendFrame, DisconnectPeer, DeliverToApp, PersistBundle, DropBundle
+//          + UI notifications: PeerReady, PeerGone, SendFailed
 ```
 
-`meshd` and `meshsim` are thin drivers around `Handle`. Tests feed events and assert on
+`meshd` and `meshsim` are thin drivers around `Handle`. The runtime runs it on a single
+event-loop goroutine; connection reader/writer goroutines talk to it only over channels (D15). Tests feed events and assert on
 actions, so they are deterministic.
 
 ### 4.2 Repository layout
@@ -71,13 +73,14 @@ actions, so they are deterministic.
 | Path | What | Milestone |
 |---|---|---|
 | `cmd/meshd/` | laptop node binary | M1 |
-| `proto/mesh/v1/` | protobuf wire schema | M1 |
-| `core/bundle`, `core/link` | bundle type, canonical ID, framing, contact protocol | M1–M2 |
+| `proto/mesh/v1/` | protobuf wire schema + generated Go code (committed) | M1 |
+| `core/bundle`, `core/link` | bundle type, canonical ID, validation; length-prefixed framing | M1 |
+| `core/node` | the sans-IO state machine (`Handle`) | M1 |
 | `core/store`, `core/router` | store + dedup, `Strategy` interface, epidemic, spray-and-wait | M2, M4 |
-| `core/crypto` | identity keys, seal/open, contact cards | M3 |
-| `transport/memnet`, `transport/tcp` | in-memory (loss/delay) and TCP links | M1–M2 |
+| `core/crypto` | Ed25519 identity (M1); X25519, seal/open, contact cards (M3) | M1, M3 |
+| `transport/memnet` | in-memory links with loss/delay (M1 tests use a two-node harness and localhost TCP) | M2 |
+| `runtime/` | event loop, TCP listen/dial with backoff (M1); SQLite, WebSocket API later | M1+ |
 | `discovery/` | mDNS `_meshchat._tcp` + manual `--peer` | M2 |
-| `runtime/` | goroutine driver, SQLite persistence, WebSocket API | M2, M5 |
 | `cmd/meshsim/` | discrete-event simulator | M4 |
 | `analysis/` | Python (uv) scripts: CSV → plots | M4 |
 | `web/` | React + TS + Vite UI, embedded with `go:embed` | M5 |
@@ -129,6 +132,12 @@ layout, not over protobuf bytes, because protobuf encoding is not canonical.
 
 **Lifetime**: each node adds the time it held a bundle to `age_ms` before forwarding. A bundle
 expires when `age_ms ≥ lifetime_ms`. No synchronized clocks needed (same idea as RFC 9171).
+Received bundles with `lifetime_ms` above 7 days are rejected, so a hostile value can't
+overflow duration arithmetic and break dedup expiry.
+
+**Duplicate connections**: if two peers end up with two links (both dialed at once), each
+side keeps the link *dialed by the smaller node ID* and closes the other. Both sides
+compute the same answer without extra messages (D16).
 
 > M1–M2 send plaintext bodies in the `ciphertext` field (no `eph_pub`/`nonce` yet);
 > M3 switches to sealed messages and bumps `version`.

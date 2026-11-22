@@ -7,7 +7,8 @@ zones. Laptops form a peer-to-peer mesh with no router and no server. Messages h
 to device and are **stored and carried** until a path to the recipient appears
 (delay-tolerant networking, DTN).
 
-> **Status:** milestone 0 (project setup). Nothing runs yet. See the [roadmap](#roadmap).
+> **Status:** milestone 1. Directly connected laptops can chat in the terminal.
+> Multi-hop store-and-forward and encryption are next. See the [roadmap](#roadmap).
 
 <!-- Screenshots / demo GIF go here from milestone 5. -->
 
@@ -32,15 +33,44 @@ Why each choice was made: [docs/decisions.md](docs/decisions.md).
 Go · Protocol Buffers · SQLite (`modernc.org/sqlite`) · React + TypeScript + Vite ·
 Python + uv (pandas, matplotlib) · GitHub Actions · golangci-lint
 
-## Setup
+## Quick start: chat between two laptops
 
-Requirements: Go 1.27+, golangci-lint v2. Later milestones add `buf`, Node and `uv`.
+Put both laptops on the same Wi-Fi, or turn on a phone hotspot (mobile data can stay off)
+and join it from both. Then:
 
 ```bash
-make test     # unit tests
+make build
+./bin/meshd -name alice                          # laptop A, listens on :7777
+./bin/meshd -name bob -peer <laptop-A-ip>:7777   # laptop B
+```
+
+To try it on one machine, use two terminals and separate data directories:
+
+```bash
+./bin/meshd -name alice -listen 127.0.0.1:7777 -data-dir /tmp/mesh-alice
+./bin/meshd -name bob -listen 127.0.0.1:7778 -data-dir /tmp/mesh-bob -peer 127.0.0.1:7777
+```
+
+In the chat, type a message to send it to your only peer, or `@name message` to pick one.
+`/peers`, `/id`, `/help` and `/quit` do what they say. On first start each node creates an
+Ed25519 identity in its data directory (default: your OS config dir), and its node ID is
+shown as a fingerprint like `MFRG-GZDF-MZTW-Q2LK`.
+
+If laptops don't see each other, the network may isolate clients (common on campus Wi-Fi);
+a phone hotspot usually works. macOS asks once to allow incoming connections.
+
+## Development
+
+Requirements: Go 1.27+, golangci-lint v2, and [buf](https://buf.build) only when editing
+`.proto` files (`GOPROXY=direct go install github.com/bufbuild/buf/cmd/buf@latest`).
+
+```bash
+make test     # unit + integration tests
+make race     # tests with the race detector (what CI runs)
+make fuzz     # short fuzz run of the frame and bundle decoders
 make lint     # golangci-lint
+make proto    # buf lint + regenerate Go code from proto/
 make build    # builds bin/meshd
-./bin/meshd -version
 ```
 
 ## Roadmap
