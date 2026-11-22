@@ -1,0 +1,7 @@
+# Generated Go code is committed so `go build` never needs buf.
+# protoc-gen-go is pinned in go.mod as a tool dependency.
+version: v2
+plugins:
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: proto
+    opt: paths=source_relative

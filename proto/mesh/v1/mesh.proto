@@ -1,0 +1,64 @@
+// Wire format for Offline Mesh Chat. See SPEC.md §6.
+//
+// Evolution rules: never reuse or renumber a field, only add new ones.
+// Old nodes ignore unknown fields, which keeps mixed versions working at a fest.
+syntax = "proto3";
+
+package mesh.v1;
+
+option go_package = "github.com/satyams018/offline-mesh-chat/proto/mesh/v1;meshv1";
+
+// Frame is the unit sent over every link: a 4-byte big-endian length, then a Frame.
+message Frame {
+  oneof kind {
+    Hello hello = 1;
+    SummaryVector summary = 2;
+    BundleRequest request = 3;
+    Bundle bundle = 4;
+  }
+}
+
+// Hello is the first frame on a link. It binds the link to a node ID.
+message Hello {
+  uint32 protocol_version = 1;
+  bytes node_id = 2; // 32-byte Ed25519 public key
+  bytes x25519_pub = 3; // from milestone 3
+  string display_name = 4;
+  bytes challenge_nonce = 5; // from milestone 3
+  bytes signature = 6; // signature over the peer's nonce, from milestone 3
+}
+
+// SummaryVector lists the bundle IDs a node holds (milestone 2).
+message SummaryVector {
+  repeated bytes bundle_ids = 1;
+}
+
+// BundleRequest lists the bundle IDs a node wants (milestone 2).
+message BundleRequest {
+  repeated bytes bundle_ids = 1;
+}
+
+// Bundle is one message travelling through the mesh.
+message Bundle {
+  // Immutable fields, covered by bundle_id.
+  uint32 version = 1;
+  bytes destination = 2; // recipient node ID, 32 bytes
+  uint64 lifetime_ms = 3;
+  bytes eph_pub = 4; // ephemeral X25519 key, from milestone 3
+  bytes nonce = 5; // XChaCha20-Poly1305 nonce, from milestone 3
+  bytes ciphertext = 6; // encoded InnerMessage (plaintext until milestone 3)
+
+  // Mutable routing block, updated by relays and NOT covered by bundle_id.
+  uint64 age_ms = 7;
+  uint32 hop_count = 8;
+  uint32 copies = 9;
+}
+
+// InnerMessage is what only the recipient sees.
+message InnerMessage {
+  bytes sender_id = 1;
+  uint64 sent_at_ms = 2;
+  bytes message_id = 3; // 16 random bytes
+  string body = 4;
+  bytes signature = 5; // from milestone 3
+}
