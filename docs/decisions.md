@@ -130,3 +130,50 @@ v2+ items live as GitHub issues and are added as ordinary feature branches.
 **Tradeoffs.** A finished, demoable, measured system beats a half-built bigger one on a resume.
 The sans-IO core and protobuf schema keep Android a pure addition later, not a rewrite.
 Cost: no cross-transport (Wi-Fi ⇄ Bluetooth) bridging in v1.
+
+## D15. One event-loop goroutine owns the core (2026-11-23)
+
+**Context.** Many connections deliver frames concurrently, but the core is a plain,
+non-thread-safe state machine (D2).
+
+**Decision.** `runtime.Run` is the only goroutine that calls `Node.Handle`. Each connection
+has a reader goroutine (frames → events channel) and a writer goroutine (bounded outbound
+queue, 64 frames, 10 s write deadline). A peer whose queue fills up is disconnected.
+
+**Alternatives.** A mutex around the node (simpler at first, but every call site must
+remember the lock, and blocking I/O under a lock causes deadlocks); one goroutine per peer
+touching shared state (data races).
+
+**Tradeoffs.** Actor-style: no locks in the core, `go test -race` stays clean, and ordering
+is easy to reason about (PeerUp is always handled before that connection's frames).
+Cost: one goroutine is a throughput ceiling, which is irrelevant at chat volumes. Bounded
+queues give backpressure, so one slow peer can't stall the loop or grow memory.
+
+## D16. Duplicate-connection tie-break: keep the link dialed by the smaller node ID (2026-11-23)
+
+**Context.** With `--peer` on both sides (or mDNS later), two laptops often dial each other
+at the same moment and end up with two TCP links.
+
+**Decision.** After Hello, if a node ID already has a link, keep the link whose *dialer* is
+`min(self, peer)` and close the other. `DialLoop` then waits while that peer is connected
+another way instead of redialing.
+
+**Alternatives.** "Close the newer one" (each side sees a different "newer", so both links
+can die), an extra negotiation message (more protocol for no gain).
+
+**Tradeoffs.** Both sides decide independently and agree, using only facts both know.
+Tested with Hellos arriving in opposite orders and with two real nodes dialing each other.
+
+## D17. Generated protobuf code is committed; protoc-gen-go is a Go tool dependency (2026-11-23)
+
+**Decision.** `protoc-gen-go` is pinned in `go.mod` (`tool` directive) and invoked as
+`go tool protoc-gen-go` by `buf generate`. The generated `.pb.go` file is committed. `buf`
+itself is installed separately (`go install`) and in CI via `bufbuild/buf-action`; CI fails
+if regenerating changes anything.
+
+**Alternatives.** Pinning `buf` in `go.mod` too (adds ~100 indirect dependencies to the
+module), or not committing generated code (every contributor and `go install` user would
+need buf).
+
+**Tradeoffs.** `go build` works with only Go installed. The codegen version is pinned and
+reproducible. Cost: a generated file in diffs, guarded by the CI up-to-date check.
